@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Planet Generator by Ilay Schönknecht</title>
+    <style>
+        :root {
+            --bg: #09090b; --panel: #121214; --border: #27272a;
+            --accent: #3b82f6; --accent-hover: #60a5fa;
+            --text: #f4f4f5; --text-dim: #a1a1aa;
+        }
+
+        body, html { margin: 0; padding: 0; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+        #ui-container {
+            position: absolute; top: 0; left: 0; width: 340px; height: 100vh;
+            background: rgba(18, 18, 20, 0.95); border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; z-index: 100;
+            backdrop-filter: blur(8px);
+        }
+
+        .header { padding: 20px; border-bottom: 1px solid var(--border); background: #000; }
+        .header h1 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #fff; }
+
+        .scroll-area { flex: 1; overflow-y: auto; padding: 20px; }
+        .scroll-area::-webkit-scrollbar { width: 4px; }
+        .scroll-area::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
+
+        .section-title { font-size: 10px; color: var(--text-dim); text-transform: uppercase; margin: 24px 0 12px 0; letter-spacing: 1px; border-bottom: 1px solid var(--border); padding-bottom: 4px; font-weight: 600; }
+        .section-title:first-child { margin-top: 0; }
+
+        .control-group { margin-bottom: 14px; }
+        .control-group label { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px; color: #d4d4d8; }
+        .control-group label span { color: var(--accent); font-family: monospace; }
+
+        input[type="range"] { width: 100%; appearance: none; background: #27272a; height: 3px; border-radius: 2px; outline: none; }
+        input[type="range"]::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; background: var(--text); border-radius: 50%; cursor: pointer; transition: 0.2s; }
+        input[type="range"]::-webkit-slider-thumb:hover { background: var(--accent); transform: scale(1.2); }
+
+        .color-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .color-item { display: flex; flex-direction: column; gap: 4px; }
+        .color-item label { font-size: 10px; color: var(--text-dim); margin: 0; }
+        input[type="color"] { width: 100%; height: 24px; border: 1px solid var(--border); background: #000; cursor: pointer; padding: 0; border-radius: 3px; }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
+
+        select { width: 100%; background: #18181b; border: 1px solid var(--border); color: white; padding: 8px; border-radius: 4px; font-size: 12px; outline: none; cursor: pointer; margin-bottom: 12px; }
+        
+        .btn { width: 100%; background: #27272a; border: 1px solid var(--border); color: white; padding: 10px; font-size: 11px; font-weight: 600; cursor: pointer; transition: 0.2s; border-radius: 4px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .btn:hover { background: #3f3f46; }
+        .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+        .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+        
+        .btn-group { display: flex; gap: 8px; margin-bottom: 12px; }
+        .btn-group .btn { margin-bottom: 0; }
+
+        #viewer { position: absolute; top: 0; left: 340px; right: 0; bottom: 0; background: #000; }
+        
+        #loading {
+            position: absolute; top: 50%; left: calc(50% + 170px); transform: translate(-50%, -50%);
+            background: rgba(9, 9, 11, 0.9); padding: 20px 30px; border-radius: 6px; border: 1px solid var(--border);
+            color: var(--text); font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+            display: none; z-index: 200; text-align: center;
+        }
+        
+        #canvas-container { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="ui-container">
+    <div class="header">
+        <h1>PlanetGen</h1>
+    </div>
+
+    <div class="scroll-area">
+        <div class="section-title">Global Settings</div>
+        <select id="preset">
+            <option value="earth">Preset: Earth-like</option>
+            <option value="mars">Preset: Mars-like</option>
+            <option value="alien">Preset: Alien World</option>
+        </select>
+        
+        <div class="btn-group">
+            <button id="btnSavePreset" class="btn">Save State</button>
+            <button id="btnLoadPreset" class="btn">Load State</button>
+        </div>
+        
+        <select id="resolution">
+            <option value="512">512x256</option>
+            <option value="1024">1024x512</option>
+            <option value="2048">2048x1024</option>
+            <option value="4096" selected>4096x2048</option>
+            <option value="8192">8192x4096</option>
+            <option value="16384">16384x8192</option>
+            <option value="32768">32768x16384</option>
+        </select>
+
+        <div class="section-title">Terrain Base</div>
+        <div class="control-group"><label>Seed <span id="val-seed">42</span></label><input type="range" id="seed" min="1" max="1000" step="1" value="42" class="tex-updater"></div>
+        <div class="control-group"><label>Land Mass <span id="val-landBias">0.0</span></label><input type="range" id="landBias" min="-0.3" max="0.3" step="0.01" value="0.0" class="tex-updater"></div>
+        <div class="control-group"><label>Fragmentation <span id="val-fragmentation">0.35</span></label><input type="range" id="fragmentation" min="0.0" max="1.0" step="0.01" value="0.35" class="tex-updater"></div>
+        <div class="control-group"><label>Scale <span id="val-scale">1.5</span></label><input type="range" id="scale" min="0.5" max="4.0" step="0.1" value="1.5" class="tex-updater"></div>
+
+        <div class="section-title">Micro Details</div>
+        <div class="control-group"><label>Biome Blend <span id="val-biomeBlend">0.08</span></label><input type="range" id="biomeBlend" min="0.001" max="0.2" step="0.005" value="0.08" class="tex-updater"></div>
+        <div class="control-group"><label>Biome Distortion <span id="val-biomeDistort">0.12</span></label><input type="range" id="biomeDistort" min="0.0" max="0.5" step="0.01" value="0.12" class="tex-updater"></div>
+        <div class="control-group"><label>Detail (Octaves) <span id="val-octaves">12</span></label><input type="range" id="octaves" min="4" max="16" step="1" value="12" class="tex-updater"></div>
+        <div class="control-group"><label>Roughness <span id="val-persistence">0.55</span></label><input type="range" id="persistence" min="0.3" max="0.75" step="0.01" value="0.55" class="tex-updater"></div>
+        <div class="control-group"><label>Mountains <span id="val-mountains">0.8</span></label><input type="range" id="mountains" min="0" max="1.5" step="0.05" value="0.8" class="tex-updater"></div>
+        <div class="control-group"><label>Rivers & Lakes <span id="val-rivers">0.5</span></label><input type="range" id="rivers" min="0" max="1" step="0.05" value="0.5" class="tex-updater"></div>
+        <div class="control-group"><label>River Distortion <span id="val-riverRandomness">1.5</span></label><input type="range" id="riverRandomness" min="0.0" max="3.0" step="0.1" value="1.5" class="tex-updater"></div>
+
+        <div class="section-title">Atmosphere</div>
+        <div class="control-group"><label>Poles Size <span id="val-poles">0.8</span></label><input type="range" id="poles" min="0" max="1" step="0.05" value="0.8" class="tex-updater"></div>
+        <div class="control-group"><label>Cloud Cover <span id="val-cloudCover">0.55</span></label><input type="range" id="cloudCover" min="0" max="1" step="0.01" value="0.55" class="tex-updater"></div>
+        <div class="control-group"><label>Cloud Turbulence <span id="val-cloudScale">2.0</span></label><input type="range" id="cloudScale" min="0.5" max="5.0" step="0.1" value="2.0" class="tex-updater"></div>
+
+        <div class="section-title">Biome Thresholds</div>
+        <div class="control-group"><label>Sea Level <span id="val-seaLevel">0.45</span></label><input type="range" id="seaLevel" min="0.1" max="0.8" step="0.01" value="0.45" class="tex-updater"></div>
+        <div class="control-group"><label>Sand <span id="val-sandLevel">0.48</span></label><input type="range" id="sandLevel" min="0.2" max="0.85" step="0.01" value="0.48" class="tex-updater"></div>
+        <div class="control-group"><label>Grass <span id="val-forestLevel">0.70</span></label><input type="range" id="forestLevel" min="0.4" max="0.95" step="0.01" value="0.70" class="tex-updater"></div>
+        <div class="control-group"><label>Rock <span id="val-rockLevel">0.88</span></label><input type="range" id="rockLevel" min="0.6" max="1.0" step="0.01" value="0.88" class="tex-updater"></div>
+
+        <div class="section-title">Colors</div>
+        <div class="color-grid control-group">
+            <div class="color-item"><label>Deep Ocean</label><input type="color" id="c_deep" value="#000b21" class="tex-updater"></div>
+            <div class="color-item"><label>Shallow Water</label><input type="color" id="c_shallow" value="#0a3970" class="tex-updater"></div>
+            <div class="color-item"><label>Sand</label><input type="color" id="c_sand" value="#c2b280" class="tex-updater"></div>
+            <div class="color-item"><label>Grass</label><input type="color" id="c_grass" value="#2a4b22" class="tex-updater"></div>
+            <div class="color-item"><label>Forest</label><input type="color" id="c_forest" value="#0f2910" class="tex-updater"></div>
+            <div class="color-item"><label>Rock</label><input type="color" id="c_rock" value="#3a3a3a" class="tex-updater"></div>
+            <div class="color-item"><label>Snow / Clouds</label><input type="color" id="c_snow" value="#ffffff" class="tex-updater"></div>
+        </div>
+
+        <div class="section-title">3D View</div>
+        <div class="control-group"><label>Displacement <span id="val-dispScale">0.12</span></label><input type="range" id="dispScale" min="0" max="0.5" step="0.01" value="0.12" class="mat-updater"></div>
+        <div class="control-group"><label>Rotation Speed <span id="val-rotation">0.5</span></label><input type="range" id="rotation" min="0" max="2" step="0.1" value="0.5" class="mat-updater"></div>
+
+        <button id="forceRegenBtn" class="btn">Generate Textures</button>
+        <button id="exportBtn" class="btn btn-primary">Export GLB</button>
+    </div>
+</div>
+
+<div id="viewer"></div>
+<div id="loading">Generating Textures...</div>
+
+<div id="canvas-container">
+    <canvas id="cvs-color"></canvas>
+    <canvas id="cvs-height"></canvas>
+    <canvas id="cvs-rough"></canvas>
+    <canvas id="cvs-clouds"></canvas>
+</div>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+    const scene = new THREE.Scene();
+    
+    const starGeo = new THREE.BufferGeometry();
+    const starPos = [];
+    for(let i=0; i<6000; i++) starPos.push((Math.random()-0.5)*400, (Math.random()-0.5)*400, (Math.random()-0.5)*400);
+    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({color: 0xffffff, size: 0.1, transparent: true, opacity: 0.6})));
+
+    const camera = new THREE.PerspectiveCamera(45, (window.innerWidth - 340) / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 3.8);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth - 340, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.getElementById('viewer').appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    const sunLight = new THREE.DirectionalLight(0xffffff, 4.0);
+    sunLight.position.set(5, 2, 3);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    scene.add(sunLight);
+    scene.add(new THREE.AmbientLight(0x111122, 0.8));
+
+    const exportGroup = new THREE.Group();
+    scene.add(exportGroup);
+
+    const planetGeo = new THREE.SphereGeometry(1, 1024, 512); 
+    const planetMat = new THREE.MeshStandardMaterial({ metalness: 0.0, roughness: 0.7 });
+    const planet = new THREE.Mesh(planetGeo, planetMat);
+    planet.receiveShadow = true;
+    planet.castShadow = true;
+    exportGroup.add(planet);
+
+    const cloudGeo = new THREE.SphereGeometry(1.012, 256, 128);
+    const cloudMat = new THREE.MeshStandardMaterial({ transparent: true, depthWrite: false, roughness: 1.0 });
+    const clouds = new THREE.Mesh(cloudGeo, cloudMat);
+    clouds.castShadow = true; 
+    exportGroup.add(clouds);
+
+    const atmosGeo = new THREE.SphereGeometry(1.035, 64, 64);
+    const atmosMat = new THREE.ShaderMaterial({
+        vertexShader: `varying vec3 vNormal; void main() { vNormal = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: `varying vec3 vNormal; void main() { float intensity = pow(0.6 - dot(vNormal, vec3(0, 0, 1.0)), 3.5); gl_FragColor = vec4(0.2, 0.5, 1.0, 1.0) * intensity * 1.5; }`,
+        blending: THREE.AdditiveBlending, side: THREE.BackSide, transparent: true
+    });
+    const atmosphere = new THREE.Mesh(atmosGeo, atmosMat);
+    scene.add(atmosphere); 
+
+    const rtScene = new THREE.Scene();
+    const rtCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    
+    const shaderMat = new THREE.ShaderMaterial({
+        uniforms: {
+            u_mode: { value: 0 },
+            u_seed: { value: 123.0 }, u_scale: { value: 1.5 }, u_octaves: { value: 12 }, 
+            u_persistence: { value: 0.55 }, u_mountains: { value: 0.8 }, u_rivers: { value: 0.5 },
+            u_landBias: { value: 0.0 }, u_fragmentation: { value: 0.35 }, u_riverRandomness: { value: 1.5 }, 
+            u_biomeDistort: { value: 0.12 }, u_biomeBlend: { value: 0.08 },
+            u_poles: { value: 0.8 }, u_cloudCover: { value: 0.55 }, u_cloudScale: { value: 2.0 },
+            u_seaLevel: { value: 0.45 }, u_sandLevel: { value: 0.48 }, u_forestLevel: { value: 0.70 }, u_rockLevel: { value: 0.88 },
+            c_deep: { value: new THREE.Color() }, c_shallow: { value: new THREE.Color() },
+            c_sand: { value: new THREE.Color() }, c_grass: { value: new THREE.Color() },
+            c_forest: { value: new THREE.Color() }, c_rock: { value: new THREE.Color() }, c_snow: { value: new THREE.Color() }
+        },
+        vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }`,
+        fragmentShader: `
+            uniform int u_mode;
+            uniform float u_seed; uniform float u_scale; uniform int u_octaves; 
+            uniform float u_persistence; uniform float u_mountains; uniform float u_rivers;
+            uniform float u_landBias; uniform float u_fragmentation; uniform float u_riverRandomness; 
+            uniform float u_biomeDistort; uniform float u_biomeBlend;
+            uniform float u_poles; uniform float u_cloudCover; uniform float u_cloudScale;
+            uniform float u_seaLevel; uniform float u_sandLevel; uniform float u_forestLevel; uniform float u_rockLevel;
+            uniform vec3 c_deep; uniform vec3 c_shallow; uniform vec3 c_sand; uniform vec3 c_grass; 
+            uniform vec3 c_forest; uniform vec3 c_rock; uniform vec3 c_snow;
+
+            varying vec2 vUv;
+
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec4 permute(vec4 x) { return mod289(((x*34.0)+1.0)*x); }
+            vec4 taylorInvSqrt(vec4 r) { return 1.79284291400159 - 0.85373472095314 * r; }
+            float snoise(vec3 v) {
+                const vec2 C = vec2(1.0/6.0, 1.0/3.0); const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+                vec3 i  = floor(v + dot(v, C.yyy)); vec3 x0 = v - i + dot(i, C.xxx);
+                vec3 g = step(x0.yzx, x0.xyz); vec3 l = 1.0 - g;
+                vec3 i1 = min(g.xyz, l.zxy); vec3 i2 = max(g.xyz, l.zxy);
+                vec3 x1 = x0 - i1 + C.xxx; vec3 x2 = x0 - i2 + C.yyy; vec3 x3 = x0 - D.yyy;
+                i = mod289(i);
+                vec4 p = permute(permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+                vec3 ns = 0.142857142857 * D.wyz - D.xzx;
+                vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+                vec4 x_ = floor(j * ns.z); vec4 y_ = floor(j - 7.0 * x_);
+                vec4 x = x_ *ns.x + ns.yyyy; vec4 y = y_ *ns.x + ns.yyyy;
+                vec4 h = 1.0 - abs(x) - abs(y);
+                vec4 b0 = vec4(x.xy, y.xy); vec4 b1 = vec4(x.zw, y.zw);
+                vec4 s0 = floor(b0)*2.0 + 1.0; vec4 s1 = floor(b1)*2.0 + 1.0;
+                vec4 sh = -step(h, vec4(0.0));
+                vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy; vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww;
+                vec3 p0 = vec3(a0.xy,h.x); vec3 p1 = vec3(a0.zw,h.y); vec3 p2 = vec3(a1.xy,h.z); vec3 p3 = vec3(a1.zw,h.w);
+                vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+                p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
+                vec4 m = max(0.5 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+                return 105.0 * dot(m*m*m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
+            }
+
+            float fbm(vec3 pos) {
+                float v = 0.0; float a = 1.0; float f = 1.0; float maxV = 0.0;
+                for (int i = 0; i < 16; ++i) {
+                    if(i >= u_octaves) break;
+                    v += a * (snoise(pos * f) * 0.5 + 0.5);
+                    maxV += a; f *= 2.0; a *= u_persistence;
+                }
+                return v / maxV;
+            }
+
+            float ridge(vec3 pos) {
+                float v = 0.0; float a = 1.0; float f = 1.0; float maxV = 0.0;
+                for (int i = 0; i < 6; ++i) {
+                    float n = 1.0 - abs(snoise(pos * f)); n = n * n;
+                    v += a * n; maxV += a; f *= 2.0; a *= 0.5;
+                }
+                return v / maxV;
+            }
+
+            void main() {
+                float phi = vUv.y * 3.14159265359;
+                float theta = vUv.x * 3.14159265359 * 2.0;
+                vec3 pos = vec3(sin(phi) * cos(theta), cos(phi), sin(phi) * sin(theta));
+                
+                if (u_mode == 3) {
+                    vec3 warp = vec3(fbm(pos * 3.0), fbm(pos * 3.0 + 42.0), 0.0);
+                    float c = fbm(pos * u_cloudScale + warp * 1.5 + u_seed + 100.0);
+                    float alpha = smoothstep(1.0 - u_cloudCover, 1.0 - u_cloudCover + 0.15, c);
+                    gl_FragColor = vec4(c_snow, clamp(alpha, 0.0, 1.0));
+                    return;
+                }
+
+                float macro = fbm(pos * (u_scale * 0.4) + u_seed);
+                float micro = fbm(pos * (u_scale * 1.5) + u_seed + 42.0);
+                float h = mix(macro, micro, u_fragmentation);
+                h = clamp(h + u_landBias, 0.0, 1.0);
+                
+                float mntMask = smoothstep(u_seaLevel, u_seaLevel + 0.2, h);
+                float m = ridge(pos * u_scale * 3.0 + u_seed + 50.0);
+                h += m * mntMask * u_mountains * 0.4;
+
+                bool isRiver = false;
+                if (u_rivers > 0.0 && h > u_seaLevel && h < u_rockLevel) {
+                    vec3 warp = vec3(snoise(pos * 8.0), snoise(pos * 8.0 + 10.0), snoise(pos * 8.0 + 20.0)) * u_riverRandomness;
+                    vec3 microWarp = vec3(snoise(pos * 40.0), snoise(pos * 45.0), snoise(pos * 50.0)) * (u_riverRandomness * 0.15);
+                    
+                    float rivNoise = 1.0 - abs(snoise(pos * u_scale * 10.0 + u_seed + warp + microWarp));
+                    float riv = pow(rivNoise, 20.0); 
+                    
+                    float rivMask = smoothstep(0.1, 0.6, snoise(pos * u_scale * 3.0 + 100.0));
+                    riv *= rivMask;
+
+                    float lakeNoise = snoise(pos * u_scale * 15.0 - u_seed + warp * 0.2);
+                    float lake = smoothstep(0.85, 1.0, lakeNoise);
+                    
+                    float waterFeature = max(riv, lake) * u_rivers;
+                    if (waterFeature > 0.3) {
+                        h = u_seaLevel - 0.005; 
+                        isRiver = true;
+                    }
+                }
+
+                float lat = abs(pos.y); 
+                float poleNoise = fbm(pos * 4.0 + u_seed) * 0.5 + 0.5;
+                float poleLat = lat + (poleNoise - 0.5) * 0.5;
+                float poleInfluence = smoothstep(1.0 - u_poles, 1.0 - u_poles + 0.3, poleLat);
+                
+                float distortNoise = snoise(pos * u_scale * 8.0 + u_seed) * u_biomeDistort;
+                float biomeH = h + distortNoise; 
+
+                if (u_mode == 1) { 
+                    float disp = h; 
+                    if(h <= u_seaLevel) disp = u_seaLevel;
+                    if (h <= u_seaLevel && poleInfluence > 0.5) disp += (poleInfluence - 0.5) * 0.02;
+                    disp = clamp((disp - u_seaLevel) / (1.0 - u_seaLevel), 0.0, 1.0);
+                    gl_FragColor = vec4(vec3(disp), 1.0);
+                } else if (u_mode == 2) { 
+                    float r = (h <= u_seaLevel) ? 0.2 : (biomeH < u_sandLevel) ? 0.8 : 0.95;
+                    if (poleInfluence > 0.3 && h <= u_seaLevel) r = 0.4;
+                    gl_FragColor = vec4(vec3(r), 1.0);
+                } else { 
+                    vec3 col;
+                    float blend = u_biomeBlend;
+
+                    if (h <= u_seaLevel) {
+                        if (isRiver) col = c_shallow;
+                        else {
+                            float t_sea = smoothstep(u_seaLevel - blend - 0.05, u_seaLevel, h);
+                            col = mix(c_deep, c_shallow, t_sea);
+                        }
+                    } else {
+                        vec3 landCol = c_sand;
+                        
+                        float t_veg = smoothstep(u_sandLevel - blend, u_sandLevel + blend, biomeH);
+                        float jungleMask = smoothstep(0.4 + distortNoise, 0.0, lat); 
+                        vec3 vegCol = mix(c_grass, c_forest, jungleMask * 0.8);
+                        landCol = mix(landCol, vegCol, t_veg);
+                        
+                        float t_rock = smoothstep(u_forestLevel - blend, u_forestLevel + blend, biomeH);
+                        landCol = mix(landCol, c_rock, t_rock);
+                        
+                        float t_snow = smoothstep(u_rockLevel - blend, u_rockLevel + blend, biomeH);
+                        col = mix(landCol, c_snow, t_snow);
+                    }
+                    
+                    col = mix(col, c_snow, poleInfluence);
+                    gl_FragColor = vec4(col, 1.0);
+                }
+            }
+        `
+    });
+    
+    rtScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), shaderMat));
+    let renderTarget = new THREE.WebGLRenderTarget(1024, 512, { format: THREE.RGBAFormat });
+
+    function renderToCanvas(mode, canvasId) {
+        shaderMat.uniforms.u_mode.value = mode;
+        renderer.setClearColor(0x000000, 0); 
+        renderer.setRenderTarget(renderTarget);
+        renderer.clear();
+        renderer.render(rtScene, rtCamera);
+
+        const width = renderTarget.width; const height = renderTarget.height;
+        const buffer = new Uint8Array(width * height * 4);
+        renderer.readRenderTargetPixels(renderTarget, 0, 0, width, height, buffer);
+
+        const canvas = document.getElementById(canvasId);
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.createImageData(width, height);
+        
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const src = ((height - 1 - y) * width + x) * 4;
+                const dst = (y * width + x) * 4;
+                imgData.data[dst] = buffer[src]; imgData.data[dst+1] = buffer[src+1];
+                imgData.data[dst+2] = buffer[src+2]; imgData.data[dst+3] = buffer[src+3]; 
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+        renderer.setRenderTarget(null);
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.ClampToEdgeWrapping;
+        if(mode !== 1) tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        return tex;
+    }
+
+    function generateTextures() {
+        const res = parseInt(document.getElementById('resolution').value);
+        const loading = document.getElementById('loading');
+        loading.style.display = 'block';
+        
+        setTimeout(() => {
+            ['seed', 'scale', 'octaves', 'persistence', 'mountains', 'rivers', 'landBias', 'fragmentation', 'riverRandomness', 'biomeDistort', 'biomeBlend', 'poles', 'cloudCover', 'cloudScale', 'seaLevel', 'sandLevel', 'forestLevel', 'rockLevel'].forEach(id => {
+                shaderMat.uniforms[`u_${id}`].value = parseFloat(document.getElementById(id).value);
+            });
+            ['deep', 'shallow', 'sand', 'grass', 'forest', 'rock', 'snow'].forEach(id => {
+                shaderMat.uniforms[`c_${id}`].value.set(document.getElementById(`c_${id}`).value);
+            });
+
+            try { renderTarget.setSize(res, res / 2); } catch(e) { console.warn("GPU Limit reached."); }
+
+            planetMat.map = renderToCanvas(0, 'cvs-color'); planetMat.map.colorSpace = THREE.SRGBColorSpace;
+            planetMat.displacementMap = renderToCanvas(1, 'cvs-height');
+            planetMat.bumpMap = planetMat.displacementMap;
+            planetMat.roughnessMap = renderToCanvas(2, 'cvs-rough');
+            
+            cloudMat.map = renderToCanvas(3, 'cvs-clouds'); cloudMat.map.colorSpace = THREE.SRGBColorSpace;
+            clouds.visible = parseFloat(document.getElementById('cloudCover').value) > 0.01;
+
+            updateMaterialProps();
+            loading.style.display = 'none';
+        }, 50);
+    }
+
+    function updateMaterialProps() {
+        planetMat.displacementScale = parseFloat(document.getElementById('dispScale').value);
+        planetMat.bumpScale = 0.015;
+        planetMat.needsUpdate = true; cloudMat.needsUpdate = true;
+    }
+
+    const presets = {
+        earth: { seed: 42, scale: 1.5, landBias: 0.0, frag: 0.35, bioBlend: 0.08, bio: 0.12, oct: 12, per: 0.55, mnt: 0.8, riv: 0.5, rRan: 1.5, pol: 0.8, cC: 0.55, cS: 2.0, sea: 0.45, sand: 0.48, for: 0.70, rock: 0.88, disp: 0.12, cD: "#000b21", cSh: "#0a3970", cSa: "#c2b280", cG: "#2a4b22", cF: "#0f2910", cR: "#3a3a3a", cSn: "#ffffff" },
+        mars: { seed: 99, scale: 2.0, landBias: 0.2, frag: 0.0, bioBlend: 0.15, bio: 0.3, oct: 10, per: 0.60, mnt: 1.2, riv: 0.0, rRan: 0.0, pol: 0.2, cC: 0.2, cS: 1.0, sea: 0.20, sand: 0.30, for: 0.40, rock: 0.85, disp: 0.08, cD: "#330b00", cSh: "#591c05", cSa: "#a34515", cG: "#803510", cF: "#5c2308", cR: "#361303", cSn: "#d1a877" },
+        alien: { seed: 777, scale: 3.0, landBias: -0.15, frag: 1.0, bioBlend: 0.05, bio: 0.4, oct: 14, per: 0.5, mnt: 0.4, riv: 1.0, rRan: 2.5, pol: 0.0, cC: 0.7, cS: 4.0, sea: 0.60, sand: 0.65, for: 0.75, rock: 0.90, disp: 0.15, cD: "#001a1a", cSh: "#006666", cSa: "#00cc99", cG: "#339933", cF: "#004d00", cR: "#1a1a1a", cSn: "#ccffcc" }
+    };
+
+    function loadPreset(key) {
+        const p = presets[key];
+        document.getElementById('seed').value = p.seed; document.getElementById('scale').value = p.scale;
+        document.getElementById('landBias').value = p.landBias; document.getElementById('fragmentation').value = p.frag;
+        document.getElementById('biomeBlend').value = p.bioBlend; document.getElementById('biomeDistort').value = p.bio;
+        document.getElementById('octaves').value = p.oct; document.getElementById('persistence').value = p.per;
+        document.getElementById('mountains').value = p.mnt; document.getElementById('rivers').value = p.riv;
+        document.getElementById('riverRandomness').value = p.rRan;
+        document.getElementById('poles').value = p.pol; document.getElementById('cloudCover').value = p.cC; document.getElementById('cloudScale').value = p.cS;
+        document.getElementById('seaLevel').value = p.sea; document.getElementById('sandLevel').value = p.sand; 
+        document.getElementById('forestLevel').value = p.for; document.getElementById('rockLevel').value = p.rock; 
+        document.getElementById('c_deep').value = p.cD; document.getElementById('c_shallow').value = p.cSh; document.getElementById('c_sand').value = p.cSa; 
+        document.getElementById('c_grass').value = p.cG; document.getElementById('c_forest').value = p.cF; document.getElementById('c_rock').value = p.cR; document.getElementById('c_snow').value = p.cSn;
+        document.getElementById('dispScale').value = p.disp;
+        updateUIValues(); generateTextures();
+    }
+
+    function saveLocalPreset() {
+        const data = {};
+        document.querySelectorAll('input').forEach(input => { data[input.id] = input.value; });
+        localStorage.setItem('simplePlanetPreset', JSON.stringify(data));
+        const btn = document.getElementById('btnSavePreset');
+        btn.innerText = "Saved";
+        setTimeout(() => btn.innerText = "Save State", 2000);
+    }
+
+    function loadLocalPreset() {
+        const stored = localStorage.getItem('simplePlanetPreset');
+        if(stored) {
+            const data = JSON.parse(stored);
+            Object.keys(data).forEach(key => {
+                const el = document.getElementById(key);
+                if(el) el.value = data[key];
+            });
+            updateUIValues(); generateTextures();
+        }
+    }
+
+    function updateUIValues() {
+        document.querySelectorAll('input[type="range"]').forEach(input => {
+            const span = document.getElementById('val-' + input.id);
+            if(span) span.innerText = input.value;
+        });
+    }
+
+    document.getElementById('btnSavePreset').addEventListener('click', saveLocalPreset);
+    document.getElementById('btnLoadPreset').addEventListener('click', loadLocalPreset);
+
+    document.querySelectorAll('.tex-updater').forEach(el => { el.addEventListener('input', updateUIValues); el.addEventListener('change', generateTextures); });
+    document.querySelectorAll('.mat-updater').forEach(el => { el.addEventListener('input', () => { updateUIValues(); updateMaterialProps(); }); });
+
+    document.getElementById('resolution').addEventListener('change', generateTextures);
+    document.getElementById('preset').addEventListener('change', (e) => loadPreset(e.target.value));
+    document.getElementById('forceRegenBtn').addEventListener('click', generateTextures);
+
+    document.getElementById('exportBtn').addEventListener('click', () => {
+        const exporter = new GLTFExporter();
+        exporter.parse(
+            exportGroup, 
+            (gltf) => {
+                const blob = new Blob([gltf], { type: 'application/octet-stream' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `planet_export_${Date.now()}.glb`;
+                link.click();
+            },
+            (error) => { console.error("Export Error:", error); },
+            { binary: true }
+        );
+    });
+
+    window.addEventListener('resize', () => {
+        camera.aspect = (window.innerWidth - 340) / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth - 340, window.innerHeight);
+    });
+
+    updateUIValues(); generateTextures();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const rot = parseFloat(document.getElementById('rotation').value) * 0.001;
+        planet.rotation.y += rot;
+        if (clouds.visible) clouds.rotation.y += rot * 1.15; 
+        atmosphere.quaternion.copy(camera.quaternion);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
+</script>
+</body>
+</html>
