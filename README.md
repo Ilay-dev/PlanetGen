@@ -1,5 +1,8 @@
 # PlanetGen
 
+<img width="1920" height="1080" alt="Planet_v2" src="https://github.com/user-attachments/assets/4d1142ac-9374-4c8c-aacc-ffa7fe4ff972" />
+
+
 A professional, browser-based 3D planet generator. Create highly detailed, photorealistic planets procedurally and export them as `.glb` files for use in Blender, Unity, Unreal Engine, or web viewers.
 
 ## Features
